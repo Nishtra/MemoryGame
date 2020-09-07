@@ -464,12 +464,12 @@
                 setTimeout(function () {
                     cardElemQuery1.addClass("matched");
                     cardElemQuery2.addClass("matched");
+                 
+                    // check if this was the last pair
+                    if ($(".card:not(.matched)").length === 0) {
+                        winGame();
+                    }
                 }, cardFlipTimeSeconds * 1000);
-
-                // check if this was the last pair
-                if ($(".card:not(.matched)").length === 0) {
-                    winGame();
-                }
             }
             else {
                 gameState.cardsOpen.first = null;
