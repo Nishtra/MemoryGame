@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory</title>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+        integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="fontawesome-free-5.14.0-web/css/all.css">
+
+    <style>
+        :root {
+            --card-flip-time-seconds: 0.5s;
+            --card-width: 120px;
+            --card-height: 180px;
+            --card-margin: 10px;
+        }
+
+        body {
+            background-color: blanchedalmond;
+        }
+
+        header {
+            display: flex;
+        }
+
+        header>* {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+        }
+
+        #start-finish-btn {
+            background-color: #44c767;
+            border-radius: 12px;
+            border: 1px solid #18ab29;
+            display: inline-block;
+            cursor: pointer;
+            color: #ffffff;
+            font-size: 17px;
+            padding: 10px 20px;
+            width: 100px;
+            text-decoration: none;
+            text-shadow: 0px 1px 0px #2f6627;
+        }
+
+        #start-finish-btn:hover {
+            background-color: #5cbf2a;
+        }
+
+        #start-finish-btn:active {
+            position: relative;
+            top: 1px;
+        }
+
+        #playing-field {
+            display: flex;
+            flex-flow: row wrap;
+        }
+
+        .card {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            width: var(--card-width);
+            height: var(--card-height);
+            border: 2px solid gray;
+            margin: var(--card-margin);
+            box-sizing: border-box;
+            background-color: whitesmoke;
+
+            position: relative;
+            transition: transform var(--card-flip-time-seconds) cubic-bezier(0.46, 0.03, 0.52, 0.96),
+                top 0.5s,
+                left 0.5s;
+        }
+
+        /* .flip class is used only to trigger rotation animation*/
+        .card.flip {
+            transform: rotateY(180deg);
+        }
+
+        .card:not(.flip) {
+            transform: rotateY(0deg);
+        }
+
+        .card.closed {
+            background-image: url("img/teal-and-white-striped-gingham-tile-pattern.jpg");
+            background-repeat: repeat;
+            background-size: 120%;
+        }
+
+        .card.closed>.fas {
+            display: none;
+        }
+
+        .card.matched {
+            opacity: 50%;
+        }
+
+        i.fas {
+            font-size: 80px;
+        }
+
+
+        #countdown-timer-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            font-weight: bold;
+            border: 2px gray solid;
+            border-radius: 10px;
+            height: 40px;
+            width: 40px;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Game "Memory"</h1>
+        <div>
+            <button id="start-finish-btn">Start</button>
+
+        </div>
+    </header>
+    <hr>
+
+    <div style="display: flex; align-items: center; justify-content: center; height: 50px;">
+        <div id="countdown-timer-container">
+            <span id="countdown-timer">5</span>
+        </div>
+    </div>
+
+    <div style="display: flex; justify-content: center;">
+        <div id="playing-field">
+        </div>
+    </div>
+
+    <script>
+        const cardFlipTimeSeconds = parseFloat(getComputedStyle(document.documentElement)
+            .getPropertyValue('--card-flip-time-seconds'));
+        const cardWidth = parseInt(getComputedStyle(document.documentElement)
+            .getPropertyValue('--card-width'));
+        const cardHeight = parseInt(getComputedStyle(document.documentElement)
+            .getPropertyValue('--card-height'));
+        const cardMargin = parseInt(getComputedStyle(document.documentElement)
+            .getPropertyValue('--card-margin'));
+        const cardIcons = [
+            "anchor", "ankh", "apple-alt", "atom", "bolt", "bomb", "carrot", "cat",
+            "chess-knight", "chess-pawn", "crow", "dice", "dog", "dove", "gem", "ghost",
+            "guitar", "hammer", "heart", "ice-cream", "moon", "music", "paw", "peace",
+            "puzzle-piece", "rocket", "snowflake", "snowman", "star", "sun", "tree", "trophy",
+            "umbrella", "yin-yang"];
+        // make css classes from FontAwesome icon names
+        const cardIconClasses = cardIcons.map(icon => icon = "fa-" + icon);
+        const colors = [
+            "BlueViolet", "CornflowerBlue", "DarkSlateBlue", "DodgerBlue", "FireBrick", "Gold", "Green",
+            "MediumSlateBlue", "MediumSpringGreen", "MediumTurquoise", "Navy", "Orange", "Teal"];
+
+        class Card {
+            constructor(iconClass, color) {
+                this.icon = iconClass;
+                this.color = color;
+            }
+        }
+
+        let gameState = {
+            inProgress: false,
+            cardsServed: false,
+            showingCards: false,
+            cardsOpen: {
+                first: null,
+                second: null
+            },
+            timerId: null,
+
+            reset: function () {
+                this.inProgress = false;
+                this.cardsServed = false;
+                this.showingCards = true;
+
+                this.cardsOpen.first = null;
+                this.cardsOpen.second = null;
+            },
+
+            twoCardsOpened: function () {
+                return this.cardsOpen.first !== null && this.cardsOpen.second !== null;
+            }
+        }
+
+        let totalCardPairs = 5;
+        let showCardsFor = 5;
+
+
+
+        /**
+        * Make a shuffled copy of an array
+        */
+        function shuffle(array) {
+            let shuffledArray = array.map(i => i);
+            for (let i = array.length - 1; i > 0; i--) {
+                let j = Math.floor(Math.random() * (i + 1));
+                let temp = shuffledArray[i];
+                shuffledArray[i] = shuffledArray[j];
+                shuffledArray[j] = temp;
+            }
+
+            return shuffledArray;
+        }
+
+        /**
+        * Get a random element from an array
+        */
+        Array.prototype.getRandom = function () {
+            let i = Math.floor(Math.random() * (this.length - 1));
+            return this[i];
+        }
+
+        // hide timer before the page loads
+        document.addEventListener("DOMContentLoaded", function () {
+            $("#countdown-timer-container").slideUp(0);
+        });
+
+        $(() => {
+            /**
+            * Click Start/Finish button
+            */
+            $("#start-finish-btn").on("click", function () {
+                if (gameState.inProgress) {
+                    let doEndGame = confirmEndingTheGame();
+                    if (doEndGame === false) {
+                        return;
+                    }
+                }
+
+                gameState.inProgress = !gameState.inProgress;
+                if (gameState.inProgress) {
+                    startGame();
+                    $(this).text("Finish");
+                }
+                else {
+                    forceEndGame();
+                    $(this).text("Start");
+                }
+            });
+
+            /**
+            * Flip card
+            */
+            $("body").on("click", ".card.closed", function (e) {
+                if (!gameState.cardsServed ||
+                    gameState.twoCardsOpened() ||
+                    gameState.showingCards) {
+                    return;
+                }
+
+                let card = e.currentTarget;
+                openCard(card);
+                flipCard(card);
+
+                if (gameState.twoCardsOpened()) {
+                    processOpenCards();
+                }
+            })
+        });
+
+        /**
+        * Ask a user to confirm ending the game. Maybe make a custom overlay later.
+        */
+        function confirmEndingTheGame() {
+            let endGame = confirm("Are you sure you want to stop playing?");
+            return endGame;
+        }
+
+        /**
+        * Start game
+        */
+        function startGame() {
+            // preparatory cleanup
+            gameState.reset();
+            gameState.inProgress = true;
+            let playingDeck = [];
+            let playingField = $("#playing-field");
+            let totalCards = totalCardPairs * 2;
+            let numberOfRows = calcNumberOfRows(totalCards);
+            let cardsPerRow = totalCards / numberOfRows;
+            playingField
+                .empty()
+                .width(cardsPerRow * (cardWidth + cardMargin * 2));
+
+            // decide on icons and colors used
+            let shuffledCardIcons = shuffle(cardIconClasses);
+            for (let i = 0; i < totalCardPairs; i++) {
+                let color = colors.getRandom();
+                let iconClass = shuffledCardIcons[i];
+
+                playingDeck.push(new Card(iconClass, color));
+                playingDeck.push(new Card(iconClass, color));
+            }
+
+            // build DOM
+            playingDeckShuffled = shuffle(playingDeck);
+            for (let i = 0; i < playingDeckShuffled.length; i++) {
+                let card = playingDeckShuffled[i];
+                let cardElem = makeCardElem(card);
+
+                // calculate offset coords to hide the card offscreen before serving
+                let cardRow = Math.floor(i / cardsPerRow);
+                let cardCol = Math.floor(i % cardsPerRow);
+                let top = -((cardHeight + cardMargin * 2 + 100) * (cardRow + 1));
+                let left = -((cardWidth + cardMargin * 2 + 100) * (cardCol + 1));
+                $(cardElem).css({
+                    top: top,
+                    left: left
+                });
+
+                playingField.append(cardElem);
+            }
+
+            serveCards();
+        }
+
+        /**
+        * Decide how many rows to spread cards on
+        */
+        function calcNumberOfRows(totalCards) {
+            let nRows = 2;
+            if (totalCards >= 15 && totalCards % 3 === 0) {
+                nRows = 3;
+            }
+            if (totalCards >= 16 && totalCards % 4 === 0) {
+                nRows = 4;
+            }
+
+            return nRows;
+        }
+
+        /**
+        * Create and return an HTML element representing a playing card
+        */
+        function makeCardElem(card) {
+            let cardElem = document.createElement("div");
+            cardElem.classList.add("card");
+
+            let iconElem = document.createElement("i");
+            iconElem.classList.add("fas", card.icon);
+            cardElem.appendChild(iconElem);
+
+            $(cardElem)
+                .css("color", card.color)
+                .data("card-obj", card);
+
+            return cardElem;
+        }
+
+        /**
+        * Serve cards in order with animation delay
+        */
+        function serveCards() {
+            let firstCard = $(".card").first();
+            serveNextCard(firstCard);
+        }
+
+        /**
+        * Serve the next card in order with animation delay
+        */
+        function serveNextCard(cardElem) {
+            setTimeout(function () {
+                $(cardElem).css({
+                    top: 0,
+                    left: 0
+                });
+                if (cardElem.next(".card").length > 0) {
+                    serveNextCard(cardElem.next());
+                }
+                else {
+                    gameState.cardsServed = true;
+                    gameState.showingCards = true;
+                    let waitForCardLandingMs = 100;
+                    setTimeout(function () {
+                        startCountdownToClosingCards();
+                    }, waitForCardLandingMs);
+                }
+            }, 100);
+        }
+
+        /**
+        * Initiate countdown to closing cards.
+        */
+        function startCountdownToClosingCards() {
+            $("#countdown-timer").text(showCardsFor);
+            $("#countdown-timer-container").slideDown();
+            decreaseTimer();
+        }
+
+        /**
+        * Decrease countdown timer every second. Close all cards when countdown reaches 0.
+        */
+        function decreaseTimer() {
+            setTimeout(function () {
+                let timerElem = $("#countdown-timer");
+                let timeRemaining = parseInt(timerElem.text());
+                if (timeRemaining > 0) {
+                    timeRemaining--;
+                    timerElem.text(timeRemaining);
+                    decreaseTimer();
+                }
+                else {
+                    $(".card").each((_, elem) => {
+                        flipCard(elem);
+                    });
+                    $("#countdown-timer-container").slideUp();
+                    gameState.showingCards = false;
+                }
+            }, 1000);
+        }
+
+        /**
+        * Add card to the open card tracker in game state object.
+        */
+        function openCard(cardElem) {
+            if (gameState.cardsOpen.first === null) {
+                gameState.cardsOpen.first = cardElem;
+            }
+            else {
+                gameState.cardsOpen.second = cardElem;
+            }
+        }
+
+        /**
+        * Initiate card rotate animation and toggle it's closed status halfway through.
+        */
+        function flipCard(cardElem) {
+            $(cardElem).toggleClass("flip");
+            setTimeout(() => {
+                $(cardElem).toggleClass("closed");
+            }, cardFlipTimeSeconds / 2 * 1000);
+        }
+
+        /**
+        * Process open cards and allow user to open a new pair. Leave them open if they form a pair, otherwise close.
+        */
+        function processOpenCards() {
+            let cardElem1 = gameState.cardsOpen.first;
+            let cardElem2 = gameState.cardsOpen.second;
+            let cardElemQuery1 = $(gameState.cardsOpen.first);
+            let cardElemQuery2 = $(gameState.cardsOpen.second);
+            let cardIcon1 = cardElemQuery1.data("card-obj").icon;
+            let cardIcon2 = cardElemQuery2.data("card-obj").icon;
+            let isPair = cardIcon1 === cardIcon2;
+
+            if (isPair) {
+                gameState.cardsOpen.first = null;
+                gameState.cardsOpen.second = null;
+
+                // add a matched class to the cards once they finish animation
+                setTimeout(function () {
+                    cardElemQuery1.addClass("matched");
+                    cardElemQuery2.addClass("matched");
+                }, cardFlipTimeSeconds * 1000);
+
+                // check if this was the last pair
+                if ($(".card:not(.matched)").length === 0) {
+                    winGame();
+                }
+            }
+            else {
+                gameState.cardsOpen.first = null;
+                gameState.cardsOpen.second = null;
+
+                setTimeout(function () {
+                    flipCard(cardElem1);
+                    flipCard(cardElem2);
+                }, 1000);
+            }
+        }
+
+        /**
+        * Cleanup when a user ends the game via Finish button
+        */
+        function forceEndGame() {
+            forceClearAllSetTimeouts();
+            $("#countdown-timer-container").slideUp(0);
+            $(".card")
+                .css({
+                    top: 0,
+                    left: 0
+                })
+                .filter(".card.closed")
+                .each((_, elem) => {
+                    flipCard(elem);
+                });
+        }
+
+        /**
+        * Dirty way to clear all set timeouts
+        */
+        function forceClearAllSetTimeouts() {
+            let highestTimeoutId = setTimeout(";");
+            for (let i = 0; i < highestTimeoutId; i++) {
+                clearTimeout(i);
+            }
+        }
+
+        /**
+        * Return gamestate to not-playing state and show a congratulation message
+        */
+        function winGame() {
+            setTimeout(function () {
+                gameState.inProgress = false;
+                $("#start-finish-btn").text("Start");
+                alert("You are winner!");
+            }, 50)
+        }
+    </script>
+</body>
+
+</html>
